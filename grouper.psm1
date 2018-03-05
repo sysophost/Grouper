@@ -1479,7 +1479,7 @@ Function Invoke-AuditGPO {
 }
 
 Function Invoke-AuditGPOReport {
-    [cmdletbinding(DefaultParameterSetName='NoArgs')]
+    [cmdletbinding(DefaultParameterSetName='WithoutFile')]
     param(
         [Parameter(ParameterSetName='WithFile', Mandatory=$true, HelpMessage="Path to XML GPO report")]
         [Parameter(ParameterSetName='OnlineDomain', Mandatory=$false, HelpMessage="Path to XML GPO report")]
@@ -1498,12 +1498,13 @@ Function Invoke-AuditGPOReport {
         [ValidateSet(1,2,3)]
         [int]$level = 2,
 
-        [Parameter(ParameterSetName='OnlineDomain', Mandatory=$false, HelpMessage="Perform online checks by actively contacting DCs within the target domain")]
+        [Parameter(ParameterSetName='OnlineDomain', Mandatory=$true, HelpMessage="Perform online checks by actively contacting DCs within the target domain")]
         [switch]$online,
 
+        [Parameter(ParameterSetName='WithoutFile', Mandatory=$false, HelpMessage="FQDN for the domain to target for online checks")]
         [Parameter(ParameterSetName='OnlineDomain', Mandatory=$false, HelpMessage="FQDN for the domain to target for online checks")]
         [ValidateNotNullOrEmpty()]
-        [string]$domain = $env:UserDomain
+        [string]$domain = "$env:userdomain"+"$env:userdnsdomain"
     )
 
     # This sucker actually consumes the file, does the stuff, this is the guy, you know?
@@ -1554,15 +1555,16 @@ Function Invoke-AuditGPOReport {
           Break
         }
 
-        if ($PSBoundParameters.Domain -and $Global:onlineChecks) {
+        #check we can resolve the specified domain
+        if (Test-ComputerSecureChannel -Server $domain) {
           $reportPath = "$($pwd)\$($domain)_gporeport.xml"
           Get-GPOReport -All -ReportType xml -Path $reportPath -Domain $domain
+          [xml]$xmldoc = get-content $reportPath
         }
         else {
-          $reportPath = "$($pwd)\gporeport.xml"
-          Get-GPOReport -All -ReportType xml -Path $reportPath
+          Write-ColorText -Text "`r`n[!] Couldn't talk to the domain $domain, unable to generate GPO report.`r`n" -Color "Red"
+          Return
         }
-        [xml]$xmldoc = get-content $reportPath
     }
     # and if the user didn't set $lazyMode, get the contents of the report they asked us to look at
     elseif ($Path){
